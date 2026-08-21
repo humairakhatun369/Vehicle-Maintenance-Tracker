@@ -1,0 +1,47 @@
+{% extends 'layout.html' %}
+{% block content %}
+<h2>Welcome, {{ username }}!</h2>
+
+<div class="dashboard-grid">
+    <div class="card form-container">
+        <h3>Add New Vehicle</h3>
+        <form action="{{ url_for('add_vehicle') }}" method="POST">
+            <label>Make (e.g., Toyota):</label>
+            <input type="text" name="make" required>
+            <label>Model (e.g., Corolla):</label>
+            <input type="text" name="model" required>
+            <label>Year:</label>
+            <input type="number" name="year" required>
+            <label>Current Mileage:</label>
+            <input type="number" name="mileage" required>
+            <button type="submit">Add Vehicle</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Your Vehicles</h3>
+        {% if vehicles %}
+            <ul class="vehicle-list">
+                {% for vehicle in vehicles %}
+                    <li>
+                        <div>
+                            <strong>{{ vehicle['year'] }} {{ vehicle['make'] }} {{ vehicle['model'] }}</strong> <br>
+                            Mileage: {{ vehicle['mileage'] }}
+                        </div>
+                        <div class="action-buttons">
+                            <!-- NEW: Link to vehicle details page -->
+                            <a href="{{ url_for('vehicle_details', id=vehicle['id']) }}" class="btn-secondary">Manage</a>
+                            
+                            <form action="{{ url_for('delete_vehicle', id=vehicle['id']) }}" method="POST" class="delete-form" onsubmit="return confirmDeletion();">
+                                <button type="submit" class="danger-btn">Delete</button>
+                            </form>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No vehicles added yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

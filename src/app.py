@@ -1,26 +1,17 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, g
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import os
 
-app = Flask(__name__, template_folder='src/templates', static_folder='src/static')
+app = Flask(__name__)
 app.secret_key = 'super_secret_key_for_lab_2' 
 
 DATABASE = 'database.db'
 
 def get_db():
-    db = getattr(g, '_database', None)
-    if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row
-        db.execute("PRAGMA foreign_keys = ON")
-    return db
-
-@app.teardown_appcontext
-def close_connection(exception):
-    db = getattr(g, '_database', None)
-    if db is not None:
-        db.close()
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
     with app.app_context():
@@ -37,16 +28,15 @@ def init_db():
                         model TEXT NOT NULL,
                         year INTEGER,
                         mileage INTEGER,
-                        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)''')
+                        FOREIGN KEY(user_id) REFERENCES users(id))''')
                         
-        # NEW: Maintenance Logs Table
         db.execute('''CREATE TABLE IF NOT EXISTS maintenance_logs (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         vehicle_id INTEGER,
                         service_type TEXT NOT NULL,
                         service_date TEXT NOT NULL,
                         cost REAL NOT NULL,
-                        FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE)''')
+                        FOREIGN KEY(vehicle_id) REFERENCES vehicles(id))''')
         db.commit()
 
 @app.route('/')
@@ -117,42 +107,20 @@ def add_vehicle():
 def delete_vehicle(id):
     if 'user_id' in session:
         db = get_db()
-        vehicle = db.execute("SELECT id FROM vehicles WHERE id = ? AND user_id = ?", (id, session['user_id'])).fetchone()
-        if vehicle:
-            db.execute("DELETE FROM maintenance_logs WHERE vehicle_id = ?", (id,))
-            db.execute("DELETE FROM vehicles WHERE id = ?", (id,))
-            db.commit()
+        db.execute("DELETE FROM vehicles WHERE id = ? AND user_id = ?", (id, session['user_id']))
+        db.commit()
     return redirect(url_for('dashboard'))
 
-@app.route('/add_log/<int:vehicle_id>', methods=['POST'])
-def add_log(vehicle_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-
-    db = get_db()
-    vehicle = db.execute("SELECT id FROM vehicles WHERE id = ? AND user_id = ?", (vehicle_id, session['user_id'])).fetchone()
-    if vehicle:
-        service_type = request.form['service_type']
-        service_date = request.form['service_date']
-        cost = request.form['cost']
-        db.execute("INSERT INTO maintenance_logs (vehicle_id, service_type, service_date, cost) VALUES (?, ?, ?, ?)",
-                   (vehicle_id, service_type, service_date, cost))
-        db.commit()
-    return redirect(url_for('vehicle_details', id=vehicle_id))
-
-# NEW: View Vehicle Details & Expense Calculation
 @app.route('/vehicle/<int:id>')
 def vehicle_details(id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
         
     db = get_db()
-    # Ensure the user owns this vehicle
     vehicle = db.execute("SELECT * FROM vehicles WHERE id = ? AND user_id = ?", (id, session['user_id'])).fetchone()
     if not vehicle:
         return redirect(url_for('dashboard'))
         
-    # Fetch logs and calculate total expense via SQL
     logs = db.execute("SELECT * FROM maintenance_logs WHERE vehicle_id = ? ORDER BY service_date DESC", (id,)).fetchall()
     expense_data = db.execute("SELECT SUM(cost) as total_expense FROM maintenance_logs WHERE vehicle_id = ?", (id,)).fetchone()
     
@@ -160,7 +128,23 @@ def vehicle_details(id):
 
     return render_template('vehicle.html', vehicle=vehicle, logs=logs, total_expense=total_expense)
 
+@app.route('/add_maintenance/<int:vehicle_id>', methods=['POST'])
+def add_maintenance(vehicle_id):
+    if 'user_id' in session:
+        service_type = request.form['service_type']
+        service_date = request.form['service_date']
+        cost = request.form['cost']
+        
+        db = get_db()
+        # Verify ownership before inserting
+        vehicle = db.execute("SELECT * FROM vehicles WHERE id = ? AND user_id = ?", (vehicle_id, session['user_id'])).fetchone()
+        if vehicle:
+            db.execute("INSERT INTO maintenance_logs (vehicle_id, service_type, service_date, cost) VALUES (?, ?, ?, ?)",
+                       (vehicle_id, service_type, service_date, cost))
+            db.commit()
+    return redirect(url_for('vehicle_details', id=vehicle_id))
+
 if __name__ == '__main__':
-    # Initialize DB (safely ignores existing tables)
-    init_db()
+    if not os.path.exists(DATABASE):
+        init_db()
     app.run(debug=True)

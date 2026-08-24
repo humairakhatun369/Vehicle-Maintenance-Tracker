@@ -128,13 +128,15 @@ def vehicle_details(id):
 
     return render_template('vehicle.html', vehicle=vehicle, logs=logs, total_expense=total_expense)
 
+
+# NEW: Add Maintenance Log
 @app.route('/add_maintenance/<int:vehicle_id>', methods=['POST'])
 def add_maintenance(vehicle_id):
     if 'user_id' in session:
         service_type = request.form['service_type']
         service_date = request.form['service_date']
         cost = request.form['cost']
-        
+
         db = get_db()
         # Verify ownership before inserting
         vehicle = db.execute("SELECT * FROM vehicles WHERE id = ? AND user_id = ?", (vehicle_id, session['user_id'])).fetchone()
